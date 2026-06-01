@@ -1,0 +1,354 @@
+# LABORATUVAR SONUÇ SİSTEMİ – WINDOWS FORM PROJESİ
+
+# Proje Özellikleri
+
+* Hasta kayıt sistemi
+* Tahlil sonuç giriş ekranı
+* Sonuç arama sistemi
+* Doktor onay sistemi
+* PDF çıktı alma
+* Menü sistemi
+* Yardım ve Hakkında ekranı
+* SQL Server bağlantısı
+* DataGridView kullanımı
+
+---
+
+# GEREKLİ NUGET PAKETİ
+
+PDF oluşturmak için:
+
+```powershell
+Install-Package iTextSharp
+```
+
+---
+
+# SQL VERİTABANI
+
+## Veritabanı Oluşturma
+
+```sql
+CREATE DATABASE LabSistemi
+GO
+
+USE LabSistemi
+GO
+
+CREATE TABLE Hastalar(
+Id INT PRIMARY KEY IDENTITY(1,1),
+AdSoyad NVARCHAR(100),
+TC NVARCHAR(11),
+Tahlil NVARCHAR(100),
+Sonuc NVARCHAR(200),
+DoktorOnay NVARCHAR(50),
+Tarih DATETIME
+)
+```
+
+---
+
+# FORM TASARIMI
+
+## Form Üzerindeki Nesneler
+
+### TextBox
+
+* txtAdSoyad
+* txtTC
+* txtTahlil
+* txtSonuc
+* txtAra
+
+### ComboBox
+
+* cmbOnay
+
+### Button
+
+* btnKaydet
+* btnListele
+* btnAra
+* btnPDF
+* btnSil
+
+### DataGridView
+
+* dataGridView1
+
+### MenuStrip
+
+* Dosya
+* Yardım
+* Hakkında
+* Çıkış
+
+---
+
+# PROGRAM.CS
+
+```csharp
+using System;
+using System.Windows.Forms;
+
+namespace LabSistemi
+{
+    internal static class Program
+    {
+        [STAThread]
+        static void Main()
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new Form1());
+        }
+    }
+}
+```
+
+---
+
+# FORM1.CS
+
+```csharp
+using System;
+using System.Data;
+using System.Data.SqlClient;
+using System.IO;
+using System.Windows.Forms;
+using iTextSharp.text;
+using iTextSharp.text.pdf;
+
+namespace LabSistemi
+{
+    public partial class Form1 : Form
+    {
+        SqlConnection baglanti =
+        new SqlConnection(@"Server=.\SQLEXPRESS;
+        Database=LabSistemi;
+        Trusted_Connection=True;");
+
+        public Form1()
+        {
+            InitializeComponent();
+
+            cmbOnay.Items.Add("Onaylandı");
+            cmbOnay.Items.Add("Bekliyor");
+            cmbOnay.Items.Add("Reddedildi");
+        }
+
+        void Listele()
+        {
+            SqlDataAdapter da =
+            new SqlDataAdapter("SELECT * FROM Hastalar", baglanti);
+
+            DataTable dt = new DataTable();
+            da.Fill(dt);
+
+            dataGridView1.DataSource = dt;
+        }
+
+        private void btnKaydet_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                baglanti.Open();
+
+                SqlCommand komut = new SqlCommand(
+                "INSERT INTO Hastalar " +
+                "(AdSoyad,TC,Tahlil,Sonuc,DoktorOnay,Tarih) " +
+                "VALUES (@a,@b,@c,@d,@e,@f)", baglanti);
+
+                komut.Parameters.AddWithValue("@a", txtAdSoyad.Text);
+                komut.Parameters.AddWithValue("@b", txtTC.Text);
+                komut.Parameters.AddWithValue("@c", txtTahlil.Text);
+                komut.Parameters.AddWithValue("@d", txtSonuc.Text);
+                komut.Parameters.AddWithValue("@e", cmbOnay.Text);
+                komut.Parameters.AddWithValue("@f", DateTime.Now);
+
+                komut.ExecuteNonQuery();
+
+                MessageBox.Show("Kayıt Eklendi");
+
+                baglanti.Close();
+
+                Listele();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+        }
+
+        private void btnListele_Click(object sender, EventArgs e)
+        {
+            Listele();
+        }
+
+        private void btnAra_Click(object sender, EventArgs e)
+        {
+            SqlDataAdapter da = new SqlDataAdapter(
+            "SELECT * FROM Hastalar WHERE AdSoyad LIKE '%"
+            + txtAra.Text + "%'", baglanti);
+
+            DataTable dt = new DataTable();
+            da.Fill(dt);
+
+            dataGridView1.DataSource = dt;
+        }
+
+        private void btnSil_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                baglanti.Open();
+
+                SqlCommand komut =
+                new SqlCommand("DELETE FROM Hastalar WHERE Id=@id",
+                baglanti);
+
+                komut.Parameters.AddWithValue("@id",
+                dataGridView1.CurrentRow.Cells[0].Value);
+
+                komut.ExecuteNonQuery();
+
+                baglanti.Close();
+
+                MessageBox.Show("Kayıt Silindi");
+
+                Listele();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+        }
+
+        private void btnPDF_Click(object sender, EventArgs e)
+        {
+            SaveFileDialog sfd = new SaveFileDialog();
+
+            sfd.Filter = "PDF Dosyası|*.pdf";
+
+            if (sfd.ShowDialog() == DialogResult.OK)
+            {
+                Document doc = new Document();
+
+                PdfWriter.GetInstance(doc,
+                new FileStream(sfd.FileName, FileMode.Create));
+
+                doc.Open();
+
+                doc.Add(new Paragraph("Laboratuvar Sonuç Raporu"));
+                doc.Add(new Paragraph(" "));
+
+                doc.Add(new Paragraph("Hasta : "
+                + txtAdSoyad.Text));
+
+                doc.Add(new Paragraph("TC : "
+                + txtTC.Text));
+
+                doc.Add(new Paragraph("Tahlil : "
+                + txtTahlil.Text));
+
+                doc.Add(new Paragraph("Sonuç : "
+                + txtSonuc.Text));
+
+                doc.Add(new Paragraph("Doktor Onay : "
+                + cmbOnay.Text));
+
+                doc.Close();
+
+                MessageBox.Show("PDF Oluşturuldu");
+            }
+        }
+
+        private void çıkışToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Application.Exit();
+        }
+
+        private void yardımToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            MessageBox.Show(
+            "Bu program laboratuvar sonuçlarını kayıt etmek için yapılmıştır.");
+        }
+
+        private void hakkındaToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            MessageBox.Show(
+            "Laboratuvar Sonuç Sistemi\nVersiyon 1.0\n2026");
+        }
+    }
+}
+```
+
+---
+
+# FORM1 DESIGNER İÇİN MENÜ
+
+```csharp
+MenuStrip menuStrip1 = new MenuStrip();
+
+ToolStripMenuItem dosya =
+new ToolStripMenuItem("Dosya");
+
+ToolStripMenuItem yardim =
+new ToolStripMenuItem("Yardım");
+
+ToolStripMenuItem hakkinda =
+new ToolStripMenuItem("Hakkında");
+
+ToolStripMenuItem cikis =
+new ToolStripMenuItem("Çıkış");
+
+menuStrip1.Items.Add(dosya);
+menuStrip1.Items.Add(yardim);
+menuStrip1.Items.Add(hakkinda);
+menuStrip1.Items.Add(cikis);
+
+this.Controls.Add(menuStrip1);
+```
+
+---
+
+# PROJEYE EKLENEBİLECEK EKSTRA ÖZELLİKLER
+
+* Kullanıcı giriş sistemi
+* Şifreleme sistemi
+* Grafik ile analiz
+* Hasta fotoğrafı ekleme
+* Barkod sistemi
+* QR Kod
+* Excel’e aktar
+* Yazdırma sistemi
+* İlaç öneri ekranı
+* Admin paneli
+
+---
+
+# KULLANILAN KONULAR
+
+* Windows Form
+* SQL Server
+* CRUD İşlemleri
+* MenuStrip
+* DataGridView
+* try-catch
+* StreamWriter / StreamReader
+* PDF oluşturma
+* Form kontrolleri
+* OOP yapısı
+
+---
+
+# PROJE ÇALIŞMA MANTIĞI
+
+1. Hasta bilgileri girilir
+2. Tahlil sonucu eklenir
+3. Doktor onayı seçilir
+4. Kayıt veritabanına kaydedilir
+5. Listeleme yapılır
+6. Sonuç arama yapılır
+7. PDF raporu alınır
+8. Menü üzerinden yardım ve hakkında açılır
